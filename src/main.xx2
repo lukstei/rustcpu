@@ -1,0 +1,81 @@
+use std::rc::{Rc, Weak};
+use std::fmt;
+use std::borrow::{BorrowMut, Borrow};
+use std::cell::{RefCell, Ref};
+use std::ops::Deref;
+
+#[derive(Debug)]
+enum ConnectorMode {
+    Input,
+    Output,
+}
+
+type ConnectorsRef = RefCell<Vec<Weak<Connector>>>;
+
+#[derive(Debug)]
+struct Connector {
+    name: String,
+    mode: ConnectorMode,
+    others: ConnectorsRef,
+    function_box: Weak<FunctionBox>
+}
+
+impl fmt::Display for Connector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        //let connectors = self.others.iter().map(|x| x.deref().borrow().name)
+
+        write!(f, "{}{}", self.name, connector)
+    }
+}
+
+impl Connector {
+    fn new(function_box: Rc<FunctionBox>, name: &str, mode: ConnectorMode) -> Connector {
+        Connector {
+            name: name.into(),
+            mode,
+            others: RefCell::new(Vec::new()),
+            function_box: Rc::downgrade(&function_box)
+        }
+    }
+
+    fn connect(c1: &Connector, c2: &Connector) {
+        let mut x1 = c1.others.borrow_mut();
+        let mut x2 = c2.others.borrow_mut();
+        /*if x1.others {
+            panic!("{} already connected", x1);
+        } else if let Some(_) = x2.others {
+            panic!("{} already connected", x2);
+        } else*/ {
+            x1.others.push(Rc::clone(c1));
+            x2.others.push(Rc::clone(c2));
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FunctionBox {
+    name: String,
+    inputs: Vec<Rc<Connector>>,
+    outputs: Vec<Rc<Connector>>,
+}
+
+impl FunctionBox {
+    fn new(name: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> FunctionBox {
+        let mut fb = FunctionBox {
+            name: name.into(),
+            inputs: Vec::new(),
+            outputs: Vec::new()
+        };
+        Rc::new
+        fb.inputs = inputs.into_iter().map(|x| Rc::new(Connector::new(x, ConnectorMode::Input))).collect()
+    }
+}
+
+fn main() {
+    let andBox = FunctionBox::new("and", vec!["i1", "i2"], vec!["and"]);
+    let onBox = FunctionBox::new("1", vec![], vec!["1"]);
+
+    Connector::connect(&andBox.outputs[0], &onBox.outputs[0]);
+
+    println!("{:?}", andBox);
+}
