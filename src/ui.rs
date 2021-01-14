@@ -15,7 +15,7 @@ use glutin_window::GlutinWindow as AppWindow;
 use std::f64::consts::PI;
 use crate::{FunctionBox, Container, Connector, ConnectorDirection};
 use std::cmp::max;
-use self::graphics::{Rectangle, color, CircleArc};
+use self::graphics::{Rectangle, color, CircleArc, line_from_to};
 use self::graphics::rectangle::{square, Border};
 use self::graphics::types::{Color, Radius};
 use self::piston::{Position, Size};
@@ -153,26 +153,34 @@ fn draw(
 ) {
     if !state.mouse_button1_pressed {
         state.dragged_function_box = None;
+        state.dragged_connector = None;
     }
 
     state.container.graph.node_indices().for_each(|i| {
+        if state.mouse_button1_pressed {
+            if let Some((fb, hpos)) = state.dragged_function_box {
+                if i == fb {
+                    let pos = &mut state.container.graph.index_mut(i).position;
+                    *pos = vec2_sub(state.mouse_position, hpos);
+                    println!("Position {:?}", pos);
+                }
+            }
+        }
+
         let mut draw = FunctionBoxDraw::new(&state.container.graph[i]);
 
         if state.mouse_button1_pressed {
             if let Some((fb, hpos)) = state.dragged_function_box {
-                if eq(draw.function_box, &state.container.graph[fb]) {
-                    drop(draw);
-
-                    let pos = &mut state.container.graph.index_mut(i).position;
-                    *pos = vec2_sub(state.mouse_position, hpos);
-                    println!("Position {:?}", pos);
-
-                    draw = FunctionBoxDraw::new(&state.container.graph[i]);
+                if i == fb {
                     draw.highlighted = true;
                 }
-            } /*else if let Some((fb, conn, hpos)) = state.dragged_connector.clone() {
-                if eq(draw.function_box, &state.container.graph[fb]) {
+            } else if let Some((fb, conn, hpos)) = state.dragged_connector.clone() {
+                if i == fb {
+                    line_from_to(color::BLACK, 1., draw.connector_position(&conn), state.mouse_position, ctx.c.transform, ctx.g);
                     draw.highlighted_connector = Some(conn);
+                } else if let Some(FunctionBoxCollideDesc::Connector(connector)) =
+                draw.collide(state.mouse_position) {
+                    draw.highlighted_connector = Some(connector);
                 }
             } else {
                 let origin = vec2_sub(state.mouse_position, draw.function_box.position);
@@ -185,11 +193,10 @@ fn draw(
                     }
                     _ => {}
                 }
-            }*/
+            }
         } else {
             state.dragged_function_box = None;
-        }
-
+        };
 
         draw.draw(ctx)
     })
