@@ -1031,6 +1031,7 @@ dependencies = [
  "piston2d-opengl_graphics",
  "piston2d-touch_visualizer",
  "pistoncore-glutin_window",
+ "vecmath",
 ]
 
 [[package]]
