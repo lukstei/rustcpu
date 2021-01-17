@@ -1,4 +1,4 @@
-use opengl_graphics::GlGraphics;
+use opengl_graphics::{GlGraphics, GlyphCache};
 use piston::{Size, Window};
 use graphics::{Context, line_from_to, color};
 use std::ops::IndexMut;
@@ -9,9 +9,9 @@ use std::fmt::{Display, Formatter};
 use core::fmt;
 use crate::game::ConnectorDirection::{Output, Input};
 use petgraph::matrix_graph::NodeIndex;
-use crate::function_box_draw::{FunctionBoxCollideDesc, FunctionBoxDraw};
+use crate::function_box_draw::{FunctionBoxCollideDesc, FunctionBoxDraw, output_input_pair};
 use petgraph::prelude::EdgeRef;
-use conrod_core::widget::Text;
+use std::borrow::Borrow;
 
 pub type PosF = Vec2d;
 type OurGraphics = GlGraphics;
@@ -36,7 +36,7 @@ impl Connector {
         Connector {
             name,
             direction,
-            idx
+            idx,
         }
     }
 }
@@ -49,7 +49,7 @@ impl Display for Connector {
 
 impl PartialEq for Connector {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.direction == other.direction
+        self.idx == other.idx && self.direction == other.direction
     }
 }
 
@@ -64,10 +64,10 @@ pub struct FunctionBox {
 
 impl FunctionBox {
     pub fn get_input_connector(&self, name: &str) -> &Connector {
-        self.inputs.iter().find(|x| {x.name==name}).unwrap()
+        self.inputs.iter().find(|x| { x.name == name }).unwrap()
     }
     pub fn get_output_connector(&self, name: &str) -> &Connector {
-        self.outputs.iter().find(|x| {x.name==name}).unwrap()
+        self.outputs.iter().find(|x| { x.name == name }).unwrap()
     }
 
     pub(crate) fn new(name: &str, position: PosF, inputs: Vec<String>, outputs: Vec<String>) -> FunctionBox {
@@ -101,17 +101,34 @@ impl Container {
         self.graph.add_node(function_box)
     }
 
-    pub(crate) fn connect(&mut self, output_ref: FunctionBoxRef, output_connector: Connector, input_ref: FunctionBoxRef, input_connector: Connector) {
+    pub fn can_connect(&self, c1: (FunctionBoxRef, &Connector), c2: (FunctionBoxRef, &Connector)) -> bool {
+        if let Some(((output_ref, output_connector), (input_ref, input_connector))) = output_input_pair(c1, c2) {
+            assert!(self.graph[output_ref].outputs.contains(&output_connector), "unknown output {}", output_connector);
+            assert!(self.graph[input_ref].inputs.contains(&input_connector), "unknown input {}", input_connector);
+            assert!(matches!(output_connector.direction, ConnectorDirection::Output), "wrong direction {}", output_connector);
+            assert!(matches!(input_connector.direction, ConnectorDirection::Input), "wrong direction {}", input_connector);
+            self.graph.edges_directed(input_ref, Direction::Incoming).into_iter()
+                .find(|x| {
+                    x.weight().iter().find(|(outp, inp)| { inp == input_connector }).is_some()
+                }).is_none()
+        } else {
+            false
+        }
+    }
+
+    pub fn connect(&mut self, output: (FunctionBoxRef, &Connector), input: (FunctionBoxRef, &Connector)) {
+        let ((output_ref, output_connector), (input_ref, input_connector)) = (output, input);
+
         assert!(self.graph[output_ref].outputs.contains(&output_connector), "unknown output {}", output_connector);
         assert!(self.graph[input_ref].inputs.contains(&input_connector), "unknown input {}", input_connector);
         assert!(matches!(output_connector.direction, ConnectorDirection::Output), "wrong direction {}", output_connector);
         assert!(matches!(input_connector.direction, ConnectorDirection::Input), "wrong direction {}", input_connector);
-        assert!(self.graph.first_edge(input_ref, Direction::Incoming).is_none(), "input {} already connected", input_connector);
+        assert!(self.can_connect(output, input), "not connectable {} -> {}", output_connector, input_connector);
 
         let edge_ref = self.graph.find_edge(output_ref, input_ref).unwrap_or(self.graph.add_edge(output_ref, input_ref, Vec::new()));
         let vec = self.graph.index_mut(edge_ref);
 
-        let new_edge = (output_connector, input_connector);
+        let new_edge = (output_connector.clone(), input_connector.clone());
         if !vec.contains(&new_edge) {
             vec.push(new_edge)
         }
@@ -152,10 +169,11 @@ pub trait Draw {
     fn draw(&self, ctx: &mut DrawCtx);
 }
 
-pub struct DrawCtx<'a> {
+pub struct DrawCtx<'a, 'b> {
     pub g: &'a mut GlGraphics,
     pub c: &'a Context,
     pub window: &'a dyn Window,
+    pub font_normal: &'a mut GlyphCache<'b>,
 }
 
 pub(crate) fn draw(
@@ -163,8 +181,10 @@ pub(crate) fn draw(
     ctx: &mut DrawCtx,
 ) {
     if !state.mouse_button1_pressed {
-        if let (Some((_fb1, c1, _)), Some((_fb2, c2, _))) = (&state.dragged_connector, &state.dragged_connector_target) {
-            println!("Connect {:?} to {:?}", c1, c2);
+        if let (Some((fb1, c1, _)), Some((fb2, c2, _))) = (&state.dragged_connector, &state.dragged_connector_target) {
+            let (output, input) = output_input_pair((*fb1, c1), (*fb2, c2)).unwrap();
+            println!("Connect {:?} to {:?}", output, input);
+            state.container.connect(output, input);
         }
 
         state.dragged_function_box = None;
@@ -204,7 +224,10 @@ pub(crate) fn draw(
                     state.dragged_connector = Some((i, connector, origin));
                 }
                 (Some(EntityKind::Connector), Some(FunctionBoxCollideDesc::Connector(connector))) => {
-                    state.dragged_connector_target = Some((i, connector,origin));
+                    let option = state.dragged_connector.as_ref().unwrap();
+                    if state.container.can_connect((option.0, &option.1), (i, &connector)) {
+                        state.dragged_connector_target = Some((i, connector, origin));
+                    }
                 }
                 _ => {}
             }
@@ -230,7 +253,4 @@ pub(crate) fn draw(
             }
         }
     });
-
-    Text::new("Test")
-        .u
 }

@@ -15,7 +15,3 @@ piston2d-graphics = "0.39.0"
 piston2d-touch_visualizer = "0.29.0"
 pistoncore-glutin_window = "0.67.0"
 vecmath="1.0.0"
-
-conrod_core = "0.71.0"
-conrod_derive = "0.71.0"
-conrod_piston = "0.71.0"
