@@ -55,7 +55,7 @@ pub fn ui_main() {
         dragged_connector_target: None,
         dragged_entity_kind: None,
     };
-    let and_box = state.container.add(FunctionBox::new("and", [50., 50.], vec!["i1".into(), "i2".into()], vec!["and".into()]));
+    let and_box = state.container.add(FunctionBox::new("nand", [50., 50.], vec!["i1".into(), "i2".into()], vec!["and".into()]));
     let one_box = state.container.add(FunctionBox::new("1", [50., 200.], vec![], vec!["1".into()]));
     let graph = &state.container.graph;
     state.container.connect((one_box, &graph[one_box].get_output_connector("1").clone()), (and_box, &graph[and_box].get_input_connector("i1").clone()));
@@ -123,6 +123,7 @@ pub fn ui_main() {
                     window: &window,
                     font_normal: &mut font_normal,
                 };
+                game::update_fb_states(&mut state);
                 game::draw(&mut state, &mut ctx);
             },
             );

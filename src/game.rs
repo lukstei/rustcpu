@@ -1,17 +1,17 @@
 use opengl_graphics::{GlGraphics, GlyphCache};
 use piston::{Size, Window};
 use graphics::{Context, line_from_to, color};
-use std::ops::IndexMut;
+use std::ops::{IndexMut, Index};
 use vecmath::vec2_sub;
 use graphics::math::Vec2d;
 use petgraph::{Direction, Graph};
 use std::fmt::{Display, Formatter};
 use core::fmt;
 use crate::game::ConnectorDirection::{Output, Input};
-use petgraph::matrix_graph::NodeIndex;
 use crate::function_box_draw::{FunctionBoxCollideDesc, FunctionBoxDraw, output_input_pair};
 use petgraph::prelude::EdgeRef;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
+use petgraph::graph::{DefaultIx, NodeIndex};
 
 pub type PosF = Vec2d;
 type OurGraphics = GlGraphics;
@@ -29,6 +29,7 @@ pub struct Connector {
     pub name: String,
     pub direction: ConnectorDirection,
     pub idx: usize,
+    pub state: bool,
 }
 
 impl Connector {
@@ -37,6 +38,7 @@ impl Connector {
             name,
             direction,
             idx,
+            state: false,
         }
     }
 }
@@ -60,6 +62,7 @@ pub struct FunctionBox {
     pub outputs: Vec<Connector>,
 
     pub position: PosF,
+    pub generation: usize, // increased in every tick to avoid infinite recursion in circles
 }
 
 impl FunctionBox {
@@ -76,6 +79,7 @@ impl FunctionBox {
             inputs: inputs.into_iter().enumerate().map(|(i, n)| Connector::new(n, ConnectorDirection::Input, i)).collect(),
             outputs: outputs.into_iter().enumerate().map(|(i, n)| Connector::new(n, ConnectorDirection::Output, i)).collect(),
             position,
+            generation: 0,
         }
     }
 
@@ -84,10 +88,11 @@ impl FunctionBox {
     }
 }
 
+pub type ConnectorRef =  usize;
 
 #[derive(Debug)]
 pub struct Container {
-    pub graph: Graph<FunctionBox, Vec<(Connector, Connector)>>
+    pub graph: Graph<FunctionBox, Vec<(ConnectorRef, ConnectorRef)>>
 }
 
 impl Container {
@@ -101,7 +106,7 @@ impl Container {
         self.graph.add_node(function_box)
     }
 
-    pub fn can_connect(&self, c1: (FunctionBoxRef, &Connector), c2: (FunctionBoxRef, &Connector)) -> bool {
+    pub fn can_connect(&self, c1: (FunctionBoxRef, ConnectorRef), c2: (FunctionBoxRef, ConnectorRef)) -> bool {
         if let Some(((output_ref, output_connector), (input_ref, input_connector))) = output_input_pair(c1, c2) {
             assert!(self.graph[output_ref].outputs.contains(&output_connector), "unknown output {}", output_connector);
             assert!(self.graph[input_ref].inputs.contains(&input_connector), "unknown input {}", input_connector);
@@ -128,7 +133,7 @@ impl Container {
         let edge_ref = self.graph.find_edge(output_ref, input_ref).unwrap_or(self.graph.add_edge(output_ref, input_ref, Vec::new()));
         let vec = self.graph.index_mut(edge_ref);
 
-        let new_edge = (output_connector.clone(), input_connector.clone());
+        let new_edge = (output_connector.idx, input_connector.idx);
         if !vec.contains(&new_edge) {
             vec.push(new_edge)
         }
@@ -175,6 +180,24 @@ pub struct DrawCtx<'a, 'b> {
     pub window: &'a dyn Window,
     pub font_normal: &'a mut GlyphCache<'b>,
 }
+
+pub(crate) fn update_fb_states(
+    state: &mut State,
+) {
+    let generation = 1 + state.container.graph.raw_nodes().first().map_or(0, |x| x.weight.generation);
+
+    state.container.graph.node_indices().for_each(|x| {
+        if state.container.graph[x].generation < generation {
+            calculate_and_set_state(&mut state.container, x);
+            state.container.graph.index_mut(x).generation = generation;
+        }
+    });
+
+    state.container.graph.node_indices().for_each(|i| {
+        assert_eq!(state.container.graph[i].generation, generation)
+    });
+}
+
 
 pub(crate) fn draw(
     state: &mut State,
@@ -243,7 +266,7 @@ pub(crate) fn draw(
                 e.weight().iter().for_each(|(c1, c2)| {
                     let d2 = FunctionBoxDraw::new(&state.container.graph[e.target()], e.target());
 
-                    draw.draw_connection_line(c1, d2.connector_position(c2), ctx)
+                    draw.draw_connection_line(state.container.graph[e.source()].outputs[ c1], d2.connector_position(state.container.graph[e.target()].inputs[c2]), ctx)
                 })
             });
 
@@ -254,3 +277,49 @@ pub(crate) fn draw(
         }
     });
 }
+
+fn calculate_and_set_state(graph: &mut Container, x: NodeIndex) {
+    let result_state: bool;
+    {
+        let x1: &FunctionBox = graph.graph.index(x);
+        match x1.name.as_str() {
+            "nand" => {
+                let mut result = true;
+                let mut count = 0;
+                graph.graph.edges_directed(x, Direction::Incoming)
+                    .for_each(|x| {
+                        let inc = &x.weight().first().unwrap().1;
+                        result = result && inc.state;
+                        count += 1;
+                    });
+                if count < 2 {
+                    result = false
+                }
+                result_state = !result;
+            }
+            "1" => {
+                result_state = true;
+            }
+            "0" => {
+                result_state = false;
+            }
+            "output_toggle" => {
+                unimplemented!()
+                //result_state = x1.state;
+            }
+            _ => panic!("Unknown function {:?}", x1.name)
+        }
+    }
+
+    let mut neighbors = graph.graph.neighbors_directed(x, Direction::Outgoing)
+        .detach();
+    while let Some(e) = neighbors
+        .next_edge(&graph.graph) {
+        graph.graph.edge_weight_mut(e).unwrap()
+            .iter_mut().for_each(|y| {
+            y.0.state = result_state;
+            y.1.state = result_state;
+        })
+    }
+}
+

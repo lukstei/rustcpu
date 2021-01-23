@@ -1,6 +1,6 @@
 use graphics::{Rectangle, line_from_to};
 use std::cmp::max;
-use crate::game::{PosF, Connector, FunctionBox, Collide, Draw, ConnectorDirection, Update, State, FunctionBoxRef, DrawCtx};
+use crate::game::{PosF, Connector, FunctionBox, Collide, Draw, ConnectorDirection, Update, State, FunctionBoxRef, DrawCtx, ConnectorRef};
 use vecmath::{vec2_sub, vec2_add};
 use crate::ui::{rgba, draw_arc_centered, draw_text_centered};
 use opengl_graphics::OpenGL;
@@ -11,8 +11,6 @@ pub struct ConnectorDraw<'a> {
     connector: &'a Connector,
     highlighted: bool,
     connected: bool,
-    visited: usize,
-    state: bool,
 }
 
 impl<'a> ConnectorDraw<'a> {
@@ -21,9 +19,7 @@ impl<'a> ConnectorDraw<'a> {
             connector,
             idx,
             highlighted: false,
-            visited: 0,
-            state: false,
-            connected: false
+            connected: false,
         }
     }
 }
@@ -80,7 +76,7 @@ impl<'a> FunctionBoxDraw<'a> {
     }
 
     pub fn draw_connection_line(&self, connector: &Connector, target: PosF, ctx: &mut DrawCtx) {
-        let bg = rgba(99, 110, 114, 1.0);
+        let bg = if connector.state { rgba(214, 48, 49, 1.0) } else { rgba(99, 110, 114, 1.0) };
 
         line_from_to(bg, 1., self.connector_position(connector), target, ctx.c.transform, ctx.g);
     }
@@ -129,13 +125,14 @@ impl Draw for FunctionBoxDraw<'_> {
                 let pos = self.connector_position(c.connector);
                 if c.highlighted {
                     draw_arc_centered(pos,
-                                      self.connector_radius, rgba(253, 203, 110,1.0), ctx);
+                                      self.connector_radius, rgba(253, 203, 110, 1.0), ctx);
                 } else {
                     draw_arc_centered(pos,
-                                      self.connector_radius, rgba(99, 110, 114, 1.0), ctx);
+                                      self.connector_radius, if c.connector.state { rgba(214, 48, 49, 1.0) } else { rgba(99, 110, 114, 1.0) }, ctx);
+
                     if !c.connected {
                         draw_arc_centered(pos,
-                                          self.connector_radius/2., rgba(178, 190, 195, 1.0), ctx);
+                                          self.connector_radius / 2., rgba(178, 190, 195, 1.0), ctx);
                     }
                 }
                 draw_text_centered(&c.connector.name, 14,
@@ -169,8 +166,8 @@ impl<'a> Update for FunctionBoxDraw<'a> {
             }
         }
         state.container.graph.edges_directed(self.idx, Direction::Outgoing)
-            .flat_map(|x| {x.weight().iter().map(|y|&y.0)})
-            .chain(state.container.graph.edges_directed(self.idx, Direction::Incoming).flat_map(|x| {x.weight().iter().map(|y|&y.1)}))
+            .flat_map(|x| { x.weight().iter().map(|y| &y.0) })
+            .chain(state.container.graph.edges_directed(self.idx, Direction::Incoming).flat_map(|x| { x.weight().iter().map(|y| &y.1) }))
             .for_each(|x| {
                 let idx = self.connector_draw_idx(x);
                 self.connector_draws[idx].connected = true;
@@ -178,7 +175,7 @@ impl<'a> Update for FunctionBoxDraw<'a> {
     }
 }
 
-pub fn output_input_pair<'a>(c1: (FunctionBoxRef, &'a Connector), c2: (FunctionBoxRef, &'a Connector)) -> Option<((FunctionBoxRef, &'a Connector), (FunctionBoxRef, &'a Connector))> {
+pub fn output_input_pair(c1: (FunctionBoxRef, ConnectorRef), c2: (FunctionBoxRef, ConnectorRef)) -> Option<((FunctionBoxRef, ConnectorRef), (FunctionBoxRef, ConnectorRef))> {
     if c1.1.direction != c2.1.direction {
         let output = if matches!(c1.1.direction, ConnectorDirection::Output) { c1 } else { c2 };
         let input = if matches!(c1.1.direction, ConnectorDirection::Output) { c2 } else { c1 };
