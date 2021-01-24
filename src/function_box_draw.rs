@@ -1,10 +1,15 @@
-use graphics::{Rectangle, line_from_to};
 use std::cmp::max;
-use crate::game::{PosF, Connector, FunctionBox, Collide, Draw, ConnectorDirection, Update, State, FunctionBoxRef, DrawCtx, ConnectorRef};
-use vecmath::{vec2_sub, vec2_add};
-use crate::ui::{rgba, draw_arc_centered, draw_text_centered};
+
+use graphics::{line_from_to, Rectangle};
 use opengl_graphics::OpenGL;
 use petgraph::Direction;
+use vecmath::{vec2_add, vec2_sub};
+
+use crate::connector::{Connector, ConnectorDirection};
+use crate::container::{ConnectorRef, FBGraph, FunctionBoxRef};
+use crate::function_box::FunctionBox;
+use crate::game::{Collide, Draw, DrawCtx, PosF, State, Update};
+use crate::ui::{draw_arc_centered, draw_text_centered, rgba};
 
 pub struct ConnectorDraw<'a> {
     idx: usize,
@@ -42,7 +47,7 @@ impl<'a> FunctionBoxDraw<'a> {
         let connector_margin = 8.;
 
         let height = 2. * padding + 40.;
-        let width = 2. * padding - connector_margin + ((connector_margin + connector_radius * 2.) * max(function_box.outputs.len(), function_box.inputs.len()) as f64);
+        let width = 2. * padding - connector_margin + ((connector_margin + connector_radius * 2.) * max(function_box.outputs_len, function_box.inputs_len) as f64);
         let rect = [function_box.position[0], function_box.position[1], width, height];
 
         FunctionBoxDraw {
@@ -53,21 +58,13 @@ impl<'a> FunctionBoxDraw<'a> {
             connector_radius,
             connector_margin,
             highlighted: false,
-            connector_draws: function_box.outputs.iter().enumerate().chain(function_box.inputs.iter().enumerate())
+            connector_draws: function_box.connectors.iter().enumerate()
                 .map(|(i, c)| ConnectorDraw::new(c, i)).collect(),
         }
     }
 
-    pub fn connector_draw_idx(&self, connector: &Connector) -> usize {
-        let idx = match connector.direction {
-            ConnectorDirection::Output => connector.idx,
-            ConnectorDirection::Input => (self.function_box.outputs.len() + connector.idx)
-        };
-        idx
-    }
-
     pub fn connector_position(&self, connector: &Connector) -> PosF {
-        let i = connector.idx as f64;
+        let i = if matches!(connector.direction, ConnectorDirection::Input) { connector.idx } else { connector.idx - self.function_box.inputs_len } as f64;
 
         [
             self.rect[0] + self.padding + (i * self.connector_margin + i * self.connector_radius * 2. + self.connector_radius),
@@ -84,7 +81,7 @@ impl<'a> FunctionBoxDraw<'a> {
 
 pub enum FunctionBoxCollideDesc {
     FunctionBox,
-    Connector(Connector),
+    Connector(ConnectorRef),
 }
 
 impl Collide for FunctionBoxDraw<'_> {
@@ -93,19 +90,15 @@ impl Collide for FunctionBoxDraw<'_> {
     fn collide(&self, point: [f64; 2]) -> Option<FunctionBoxCollideDesc> {
         let [x1, y1] = point;
 
-        if let Some((_i, conn)) =
-        self.function_box.outputs.iter().enumerate()
-            .chain(self.function_box.inputs.iter().enumerate())
+        if let Some((i, _conn)) =
+        self.function_box.connectors.iter().enumerate()
             .find(|(i, x)| {
                 let [x2, y2] = self.connector_position(x);
 
-                f64::sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)) <= self.connector_radius
+                f64::sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)) <= self.connector_radius*self.connector_radius
             }) {
-            Some(FunctionBoxCollideDesc::Connector(conn.clone()))
-        } else if x1 >= self.rect[0]
-            && x1 <= self.rect[0] + self.rect[2]
-            && y1 >= self.rect[1]
-            && y1 <= self.rect[1] + self.rect[3] {
+            Some(FunctionBoxCollideDesc::Connector(i))
+        } else if let Some(()) = self.rect.collide(point) {
             Some(FunctionBoxCollideDesc::FunctionBox)
         } else {
             None
@@ -136,7 +129,7 @@ impl Draw for FunctionBoxDraw<'_> {
                     }
                 }
                 draw_text_centered(&c.connector.name, 14,
-                                   vec2_add(pos, [0., if matches!(c.connector.direction, ConnectorDirection::Input) { -13. } else { 20. }]), rgba(223, 230, 233, 1.0), ctx);
+                                   vec2_add(pos, [0., if matches!(c.connector.direction, ConnectorDirection::Input) { -18. } else { 18. }]), rgba(223, 230, 233, 1.0), ctx);
             });
     }
 }
@@ -151,16 +144,14 @@ impl<'a> Update for FunctionBoxDraw<'a> {
         }
         if let Some((fb, conn, hpos)) = &state.dragged_connector {
             if i == *fb {
-                let idx = self.connector_draw_idx(conn);
-                self.connector_draws[idx].highlighted = true;
+                self.connector_draws[*conn].highlighted = true;
             }
         }
         if let (Some((fb1, c1, _)), Some((fb2, c2, _))) = (&state.dragged_connector, &state.dragged_connector_target) {
             if i == *fb2 {
-                if let Some((output, input)) = output_input_pair((*fb1, c1), (*fb2, c2)) {
+                if let Some((output, input)) = output_input_pair(&state.container.graph,(*fb1, *c1), (*fb2, *c2)) {
                     if state.container.can_connect(output, input) {
-                        let idx = self.connector_draw_idx(c2);
-                        self.connector_draws[idx].highlighted = true;
+                        self.connector_draws[*c2].highlighted = true;
                     }
                 }
             }
@@ -169,16 +160,17 @@ impl<'a> Update for FunctionBoxDraw<'a> {
             .flat_map(|x| { x.weight().iter().map(|y| &y.0) })
             .chain(state.container.graph.edges_directed(self.idx, Direction::Incoming).flat_map(|x| { x.weight().iter().map(|y| &y.1) }))
             .for_each(|x| {
-                let idx = self.connector_draw_idx(x);
-                self.connector_draws[idx].connected = true;
+                self.connector_draws[*x].connected = true;
             })
     }
 }
 
-pub fn output_input_pair(c1: (FunctionBoxRef, ConnectorRef), c2: (FunctionBoxRef, ConnectorRef)) -> Option<((FunctionBoxRef, ConnectorRef), (FunctionBoxRef, ConnectorRef))> {
-    if c1.1.direction != c2.1.direction {
-        let output = if matches!(c1.1.direction, ConnectorDirection::Output) { c1 } else { c2 };
-        let input = if matches!(c1.1.direction, ConnectorDirection::Output) { c2 } else { c1 };
+pub fn output_input_pair(graph: &FBGraph, c1: (FunctionBoxRef, ConnectorRef), c2: (FunctionBoxRef, ConnectorRef)) -> Option<((FunctionBoxRef, ConnectorRef), (FunctionBoxRef, ConnectorRef))> {
+    let c1_dir = graph[c1.0].connectors[c1.1].direction;
+    let c2_dir = graph[c2.0].connectors[c2.1].direction;
+    if c1_dir != c2_dir {
+        let output = if matches!(c1_dir, ConnectorDirection::Output) { c1 } else { c2 };
+        let input = if matches!(c1_dir, ConnectorDirection::Output) { c2 } else { c1 };
         Some((output, input))
     } else {
         None

@@ -1,35 +1,40 @@
 extern crate piston;
 extern crate opengl_graphics;
 extern crate graphics;
-
 extern crate glutin_window;
 
 
-use opengl_graphics::{GlGraphics, OpenGL};
-use graphics::{Context, Graphics};
-use std::collections::HashMap;
-use piston::window::{AdvancedWindow, Window, WindowSettings};
-use piston::input::*;
-use piston::event_loop::*;
-
-use glutin_window::GlutinWindow as AppWindow;
-use std::f64::consts::PI;
-use std::cmp::max;
-use self::graphics::{Rectangle, color, CircleArc, line_from_to, Text, CharacterCache};
-use self::graphics::rectangle::{square, Border};
-use self::graphics::types::{Color, Radius, FontSize};
-use self::piston::{Position, Size};
-use self::graphics::math::{Vec2d, translate};
 use std::cell::RefCell;
+use std::cmp::max;
+use std::collections::HashMap;
+use std::f64::consts::PI;
+use std::mem::replace;
+use std::ops::IndexMut;
 use std::ptr;
 use std::ptr::eq;
+
+use glutin_window::GlutinWindow as AppWindow;
+use graphics::{Context, Graphics};
+use opengl_graphics::{GlGraphics, OpenGL};
 use petgraph::graph::{Node, NodeIndex};
-use std::ops::IndexMut;
-use vecmath::{vec2_add, vec2_sub, mat2x3_sub, col_mat3x2_transform_pos2, mat2x3_add, row_mat2x3_mul, vec2_mul};
-use std::mem::replace;
-use crate::game::{PosF, Container, FunctionBox, Connector, DrawCtx};
+use piston::event_loop::*;
+use piston::input::*;
+use piston::window::{AdvancedWindow, Window, WindowSettings};
+use vecmath::{col_mat3x2_transform_pos2, mat2x3_add, mat2x3_sub, row_mat2x3_mul, vec2_add, vec2_mul, vec2_sub};
+
+use crate::button::Button;
+use crate::connector::Connector;
+use crate::container::Container;
+use crate::function_box::FunctionBox;
+use crate::game::{DrawCtx, Entities, PosF};
 use crate::game;
+
+use self::graphics::{CharacterCache, CircleArc, color, line_from_to, Rectangle, Text};
+use self::graphics::math::{translate, Vec2d};
+use self::graphics::rectangle::{Border, square};
+use self::graphics::types::{Color, FontSize, Radius};
 use self::opengl_graphics::GlyphCache;
+use self::piston::{Button as PistonButton, Position, Size};
 
 pub fn rgba(r: i32, g: i32, b: i32, a: f32) -> Color {
     [r as f32 / 255., g as f32 / 255., b as f32 / 255., a]
@@ -43,6 +48,10 @@ pub fn ui_main() {
     let ref mut gl = GlGraphics::new(opengl);
 
     let mut font_normal = GlyphCache::new("assets/FiraSans-Regular.ttf", (), opengl_graphics::TextureSettings::new()).unwrap();
+
+    let mut entities = Entities {
+        add_fb_button: Box::new(Button::new("+".into(), [50., 500.]))
+    };
 
     let mut state = crate::game::State {
         container: Container::new(),
@@ -58,7 +67,7 @@ pub fn ui_main() {
     let and_box = state.container.add(FunctionBox::new("nand", [50., 50.], vec!["i1".into(), "i2".into()], vec!["and".into()]));
     let one_box = state.container.add(FunctionBox::new("1", [50., 200.], vec![], vec!["1".into()]));
     let graph = &state.container.graph;
-    state.container.connect((one_box, &graph[one_box].get_output_connector("1").clone()), (and_box, &graph[and_box].get_input_connector("i1").clone()));
+    state.container.connect((one_box, graph[one_box].get_output_connector("1").idx), (and_box, graph[and_box].get_input_connector("i1").idx));
 
     let mut mouse_position = state.mouse_position;
     let mut mouse_delta = state.mouse_delta;
@@ -67,13 +76,13 @@ pub fn ui_main() {
 
     let mut events = Events::new(EventSettings::new().lazy(true));
     while let Some(e) = events.next(&mut window) {
-        if let Some(Button::Mouse(button)) = e.press_args() {
+        if let Some(PistonButton::Mouse(button)) = e.press_args() {
             println!("Pressed mouse button '{:?}'", button);
             if let MouseButton::Left = button {
                 mouse_button1_pressed = true;
             }
         }
-        if let Some(Button::Keyboard(key)) = e.press_args() {
+        if let Some(PistonButton::Keyboard(key)) = e.press_args() {
             println!("Pressed keyboard key '{:?}'", key);
         };
         if let Some(args) = e.button_args() {
@@ -81,15 +90,15 @@ pub fn ui_main() {
         }
         if let Some(button) = e.release_args() {
             match button {
-                Button::Keyboard(key) => println!("Released keyboard key '{:?}'", key),
-                Button::Mouse(button) => {
+                PistonButton::Keyboard(key) => println!("Released keyboard key '{:?}'", key),
+                PistonButton::Mouse(button) => {
                     println!("Released mouse button '{:?}'", button);
                     if let MouseButton::Left = button {
                         mouse_button1_pressed = false;
                     }
                 }
-                Button::Controller(button) => println!("Released controller button '{:?}'", button),
-                Button::Hat(hat) => println!("Released controller hat `{:?}`", hat),
+                PistonButton::Controller(button) => println!("Released controller button '{:?}'", button),
+                PistonButton::Hat(hat) => println!("Released controller hat `{:?}`", hat),
             }
         };
         e.mouse_cursor(|pos| {
@@ -123,8 +132,10 @@ pub fn ui_main() {
                     window: &window,
                     font_normal: &mut font_normal,
                 };
-                game::update_fb_states(&mut state);
-                game::draw(&mut state, &mut ctx);
+                game::update_entities(&mut entities, &mut state);
+                game::update(&mut state);
+                game::draw(&state, &mut ctx);
+                game::draw_entities(&entities, &state, &mut ctx);
             },
             );
         }
@@ -151,10 +162,11 @@ pub fn measure_text(text: &str, font_size: FontSize, font: &mut GlyphCache) -> V
     [text.chars().into_iter()
         .map(|x| { font.character(font_size, x).unwrap().advance_width() })
         .sum(),
-        0.]
+        text.chars().next().map_or(0., |x| -font.character(font_size, x).unwrap().top())]
 }
 
 pub fn draw_arc_centered(center: PosF, circle_radius: Radius, color: Color, ctx: &mut DrawCtx) {
     CircleArc::new(color, circle_radius, 0., 2. * PI)
         .draw_tri([center[0] - circle_radius, center[1] - circle_radius, circle_radius * 2., circle_radius * 2.], &Default::default(), ctx.c.transform, ctx.g);
 }
+
