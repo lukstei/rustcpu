@@ -1,13 +1,13 @@
 use std::fmt::{Display, Formatter};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ConnectorDirection {
     Input,
     Output,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Connector {
     pub name: String,
     pub direction: ConnectorDirection,

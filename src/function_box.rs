@@ -1,7 +1,7 @@
 use crate::connector::{Connector, ConnectorDirection};
 use crate::game::PosF;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct FunctionBox {
     pub name: String,
     pub connectors: Vec<Connector>,

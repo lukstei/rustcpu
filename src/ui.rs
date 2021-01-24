@@ -50,7 +50,9 @@ pub fn ui_main() {
     let mut font_normal = GlyphCache::new("assets/FiraSans-Regular.ttf", (), opengl_graphics::TextureSettings::new()).unwrap();
 
     let mut entities = Entities {
-        add_fb_button: Box::new(Button::new("+".into(), [50., 500.]))
+        add_fb_button: Box::new(Button::new("+".into(), [50., 500.])),
+        save_button: Box::new(Button::new("Save".into(), [50. + 1.*(70. +5.), 500.])),
+        load_button: Box::new(Button::new("Load".into(), [50. + 2.*(70. +5.), 500.]))
     };
 
     let mut state = crate::game::State {

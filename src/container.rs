@@ -6,12 +6,13 @@ use petgraph::graph::NodeIndex;
 use crate::connector::ConnectorDirection;
 use crate::function_box::FunctionBox;
 use crate::function_box_draw::output_input_pair;
+use serde::{Serialize, Deserialize};
 
 pub type FunctionBoxRef = NodeIndex<u32>;
 pub type ConnectorRef = usize;
 pub type FBGraph = Graph<FunctionBox, Vec<(ConnectorRef, ConnectorRef)>>;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Container {
     pub graph: FBGraph
 }

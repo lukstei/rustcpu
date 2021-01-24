@@ -66,6 +66,6 @@ impl Draw for Button {
         let mut rectangle = Rectangle::new_round_border(rgba(45, 52, 54,1.0), 2., 2.);
         rectangle = rectangle.color(if self.highlighted { rgba(253, 203, 110, 1.0) } else { rgba(178, 190, 195,1.0) });
         rectangle.draw_tri(self.rect, &Default::default(), ctx.c.transform, ctx.g);
-        draw_text_centered(&self.text, 30, [self.rect[0] + self.rect[2] / 2., self.rect[1] + self.rect[3] / 2.], rgba(45, 52, 54, 1.0), ctx);
+        draw_text_centered(&self.text, 20, [self.rect[0] + self.rect[2] / 2., self.rect[1] + self.rect[3] / 2.], rgba(45, 52, 54, 1.0), ctx);
     }
 }

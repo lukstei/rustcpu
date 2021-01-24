@@ -21,6 +21,9 @@ use crate::connector::ConnectorDirection::{Input, Output};
 use crate::container::{ConnectorRef, Container, FBGraph, FunctionBoxRef};
 use crate::function_box::FunctionBox;
 use crate::function_box_draw::{FunctionBoxCollideDesc, FunctionBoxDraw, output_input_pair};
+use std::fs::File;
+use std::io::Write;
+use std::error::Error;
 
 pub type PosF = Vec2d;
 type OurGraphics = GlGraphics;
@@ -47,7 +50,9 @@ pub struct State {
 }
 
 pub struct Entities {
-    pub add_fb_button: Box<Button>
+    pub add_fb_button: Box<Button>,
+    pub save_button: Box<Button>,
+    pub load_button: Box<Button>,
 }
 
 impl Entities {
@@ -75,15 +80,30 @@ pub struct DrawCtx<'a, 'b> {
     pub window: &'a dyn Window,
     pub font_normal: &'a mut GlyphCache<'b>,
 }
+
 pub(crate) fn update_entities(
     entities: &mut Entities,
     state: &mut State,
-){
+) {
     entities.add_fb_button.update(state);
+    entities.save_button.update(state);
+    entities.load_button.update(state);
+
     if entities.add_fb_button.pressed() {
         println!("Pressed");
         state.container.add(FunctionBox::new("nand", [100., 50.], vec!["i1".into(), "i2".into()], vec!["nand".into()]));
-
+    }
+    if entities.save_button.pressed() {
+        let json = serde_json::to_string_pretty(&state.container).unwrap();
+        println!("JSON: {}", json);
+        File::create("save.json").unwrap().write(json.as_bytes()).unwrap();
+    }
+    if entities.load_button.pressed() {
+        match File::open("save.json").map_err(|e| e.to_string())
+            .and_then(|file| serde_json::from_reader(file).map_err(|e| e.to_string())) {
+            Ok(graph) => state.container = graph,
+            Err(e) => println!("Error loading state: {}", e)
+        }
     }
 }
 
@@ -93,10 +113,13 @@ pub(crate) fn draw_entities(
     ctx: &mut DrawCtx,
 ) {
     entities.add_fb_button.draw(ctx);
+    entities.save_button.draw(ctx);
+    entities.load_button.draw(ctx);
 }
+
 pub(crate) fn update(
     state: &mut State,
-){
+) {
     update_general_states(state);
     update_fb_states(state);
 }
@@ -104,7 +127,6 @@ pub(crate) fn update(
 pub(crate) fn update_general_states(
     state: &mut State,
 ) {
-
     if !state.mouse_button1_pressed {
         if let (Some((fb1, c1, _)), Some((fb2, c2, _))) = (state.dragged_connector, state.dragged_connector_target) {
             let (output, input) = output_input_pair(&state.container.graph, (fb1, c1), (fb2, c2)).unwrap();
@@ -164,7 +186,6 @@ pub(crate) fn update_general_states(
             }
         }
     })
-
 }
 
 
@@ -218,7 +239,7 @@ fn calculate_and_set_state(graph: &mut FBGraph, x: NodeIndex) {
     {
         match graph.index(x).name.as_str() {
             "nand" => {
-                result_state = !graph.index(x).inputs_iter().fold(true, |x, y| {x&&y.state});
+                result_state = !graph.index(x).inputs_iter().fold(true, |x, y| { x && y.state });
             }
             "1" => {
                 result_state = true;
