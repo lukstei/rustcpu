@@ -1,4 +1,4 @@
-use crate::game::Collide;
+use crate::game::{Collide, PosF};
 
 impl Collide for [f64; 4] {
     type CollideDesc = ();
@@ -15,4 +15,8 @@ impl Collide for [f64; 4] {
             None
         }
     }
+}
+
+pub fn rect_center(rect: [f64; 4]) -> PosF {
+    [rect[0] + rect[2]/2., rect[1] + rect[3]/2.]
 }

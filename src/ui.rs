@@ -42,7 +42,7 @@ pub fn rgba(r: i32, g: i32, b: i32, a: f32) -> Color {
 
 pub fn ui_main() {
     let opengl = OpenGL::V3_2;
-    let mut window: AppWindow = WindowSettings::new("piston-example-user_input", [1024, 768])
+    let mut window: AppWindow = WindowSettings::new("Rust CPU", [1024, 768])
         .exit_on_esc(true).graphics_api(opengl).build().unwrap();
 
     let ref mut gl = GlGraphics::new(opengl);
@@ -50,13 +50,17 @@ pub fn ui_main() {
     let mut font_normal = GlyphCache::new("assets/FiraSans-Regular.ttf", (), opengl_graphics::TextureSettings::new()).unwrap();
 
     let mut entities = Entities {
-        add_fb_button: Box::new(Button::new("+".into(), [50., 500.])),
-        save_button: Box::new(Button::new("Save".into(), [50. + 1.*(70. +5.), 500.])),
-        load_button: Box::new(Button::new("Load".into(), [50. + 2.*(70. +5.), 500.]))
+        add_fb_button: Button::new("+".into(), [50., 500.]),
+        save_button: Button::new("Save".into(), [50. + 1.*(70. +5.), 500.]),
+        load_button: Button::new("Load".into(), [50. + 2.*(70. +5.), 500.]),
     };
 
+    let mut container = Container::new();
+    let output_fb = container.add(FunctionBox::new("output", [50., 400.], vec![], vec!["1".into(), "2".into(), "3".into()]));
+    let input_fb = container.add(FunctionBox::new("input", [50., 20.], vec!["1".into(), "2".into(), "3".into()], vec![]));
+
     let mut state = crate::game::State {
-        container: Container::new(),
+        container,
         mouse_button1_pressed: false,
         mouse_position: [0., 0.],
         mouse_delta: [0., 0.],
@@ -65,11 +69,10 @@ pub fn ui_main() {
         dragged_connector: None,
         dragged_connector_target: None,
         dragged_entity_kind: None,
+
+        input_fb,
+        output_fb
     };
-    let and_box = state.container.add(FunctionBox::new("nand", [50., 50.], vec!["i1".into(), "i2".into()], vec!["and".into()]));
-    let one_box = state.container.add(FunctionBox::new("1", [50., 200.], vec![], vec!["1".into()]));
-    let graph = &state.container.graph;
-    state.container.connect((one_box, graph[one_box].get_output_connector("1").idx), (and_box, graph[and_box].get_input_connector("i1").idx));
 
     let mut mouse_position = state.mouse_position;
     let mut mouse_delta = state.mouse_delta;

@@ -1,6 +1,7 @@
-use crate::game::{Update, State, Collide, Draw, DrawCtx, PosF};
+use crate::game::{Update, State, Collide, Draw, DrawCtx, PosF, Entity};
 use crate::ui::{rgba, draw_text_centered};
 use graphics::Rectangle;
+use crate::util::rect_center;
 
 #[derive(Debug)]
 pub struct Button {
@@ -41,6 +42,8 @@ impl Collide for Button {
     }
 }
 
+impl Entity for Button {}
+
 impl Update for Button {
     fn update(&mut self, state: &State) {
         if state.mouse_button1_pressed {
@@ -63,9 +66,9 @@ impl Update for Button {
 
 impl Draw for Button {
     fn draw(&self, ctx: &mut DrawCtx) {
-        let mut rectangle = Rectangle::new_round_border(rgba(45, 52, 54,1.0), 2., 2.);
-        rectangle = rectangle.color(if self.highlighted { rgba(253, 203, 110, 1.0) } else { rgba(178, 190, 195,1.0) });
+        let mut rectangle = Rectangle::new_round_border(rgba(45, 52, 54, 1.0), 2., 2.);
+        rectangle = rectangle.color(if self.highlighted { rgba(253, 203, 110, 1.0) } else { rgba(178, 190, 195, 1.0) });
         rectangle.draw_tri(self.rect, &Default::default(), ctx.c.transform, ctx.g);
-        draw_text_centered(&self.text, 20, [self.rect[0] + self.rect[2] / 2., self.rect[1] + self.rect[3] / 2.], rgba(45, 52, 54, 1.0), ctx);
+        draw_text_centered(&self.text, 20, rect_center(self.rect), rgba(45, 52, 54, 1.0), ctx);
     }
 }

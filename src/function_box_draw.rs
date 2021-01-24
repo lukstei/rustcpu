@@ -10,6 +10,7 @@ use crate::container::{ConnectorRef, FBGraph, FunctionBoxRef};
 use crate::function_box::FunctionBox;
 use crate::game::{Collide, Draw, DrawCtx, PosF, State, Update};
 use crate::ui::{draw_arc_centered, draw_text_centered, rgba};
+use crate::util::rect_center;
 
 pub struct ConnectorDraw<'a> {
     idx: usize,
@@ -31,7 +32,7 @@ impl<'a> ConnectorDraw<'a> {
 
 pub struct FunctionBoxDraw<'a> {
     idx: FunctionBoxRef,
-    function_box: &'a FunctionBox,
+    pub function_box: &'a FunctionBox,
     rect: [f64; 4],
     padding: f64,
     connector_radius: f64,
@@ -113,6 +114,9 @@ impl Draw for FunctionBoxDraw<'_> {
         rectangle = rectangle.color(bg_color);
         rectangle.draw_tri(self.rect, &Default::default(), ctx.c.transform, ctx.g);
 
+        draw_text_centered(&self.function_box.name, 16,
+                           rect_center(self.rect), rgba(223, 230, 233, 1.0), ctx);
+
         self.connector_draws.iter()
             .for_each(|c| {
                 let pos = self.connector_position(c.connector);
@@ -128,8 +132,8 @@ impl Draw for FunctionBoxDraw<'_> {
                                           self.connector_radius / 2., rgba(178, 190, 195, 1.0), ctx);
                     }
                 }
-                draw_text_centered(&c.connector.name, 14,
-                                   vec2_add(pos, [0., if matches!(c.connector.direction, ConnectorDirection::Input) { -18. } else { 18. }]), rgba(223, 230, 233, 1.0), ctx);
+                draw_text_centered(&c.connector.name, 12,
+                                   vec2_add(pos, [0., if matches!(c.connector.direction, ConnectorDirection::Input) { -15. } else { 15. }]), rgba(223, 230, 233, 1.0), ctx);
             });
     }
 }

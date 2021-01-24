@@ -6,6 +6,7 @@ mod util;
 mod connector;
 mod function_box;
 mod container;
+mod toggle_button_array;
 
 
 fn main() {

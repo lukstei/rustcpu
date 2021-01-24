@@ -1,7 +1,7 @@
 use core::fmt;
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::{Display, Formatter};
-use std::iter::Take;
+use std::iter::{Take, once};
 use std::ops::{Index, IndexMut};
 use std::slice::Iter;
 
@@ -47,17 +47,25 @@ pub struct State {
     pub dragged_function_box: Option<(FunctionBoxRef, PosF)>,
     pub dragged_connector: Option<(FunctionBoxRef, ConnectorRef, PosF)>,
     pub dragged_connector_target: Option<(FunctionBoxRef, ConnectorRef, PosF)>,
+
+    pub output_fb: NodeIndex,
+    pub input_fb: NodeIndex,
+
 }
 
+pub trait Entity: Update+Draw{}
+
 pub struct Entities {
-    pub add_fb_button: Box<Button>,
-    pub save_button: Box<Button>,
-    pub load_button: Box<Button>,
+    pub add_fb_button: Button,
+    pub save_button: Button,
+    pub load_button: Button,
+
+    //entities: Vec<&'a dyn Entity>
 }
 
 impl Entities {
-    /*pub fn iter(&self) -> impl Iterator<Item=&Box<dyn Draw>> {
-        Box::new(vec!(&self.add_fb_button).into_iter())
+    /*pub fn iter(&self) -> &Vec<&'a dyn Entity> {
+        &self.entities
     }*/
 }
 
@@ -247,9 +255,8 @@ fn calculate_and_set_state(graph: &mut FBGraph, x: NodeIndex) {
             "0" => {
                 result_state = false;
             }
-            "output_toggle" => {
-                unimplemented!()
-                //result_state = x1.state;
+            "output" | "input" => {
+                result_state = false;
             }
             _ => panic!("Unknown function {:?}", graph.index(x).name)
         }
